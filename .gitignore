@@ -1,0 +1,46 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datasets
+data/raw/
+data/processed/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Model checkpoints and training outputs
+outputs/
+checkpoints/
+runs/
+wandb/
+
+# Generated files
+*.log
+.DS_Store
+Thumbs.db

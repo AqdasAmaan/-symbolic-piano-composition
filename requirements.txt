@@ -1,0 +1,5 @@
+numpy
+torch 
+transformers==4.48.3
+miditok>=2.1.7
+symusic
