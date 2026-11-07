@@ -33,6 +33,7 @@ data/processed/
 *.pth
 *.ckpt
 *.safetensors
+*.bin
 
 # Model checkpoints and training outputs
 outputs/
