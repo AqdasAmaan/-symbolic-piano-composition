@@ -178,6 +178,8 @@ export default function OutputPanel({
     }
   };
 
+  const LOOKAHEAD_SECONDS = 8;
+
   const playFromPosition = async (position) => {
     const midi = midiRef.current;
     const instrument = instrumentRef.current;
@@ -187,58 +189,61 @@ export default function OutputPanel({
 
     stopNotes();
 
-    const startTime = audioContext.currentTime + 0.05;
+    const startTime = audioContext.currentTime + 0.1;
 
     startedAtRef.current = startTime;
     positionRef.current = position;
 
-    const notes = midi.tracks.flatMap((track) => track.notes);
+    // Remaining notes, sorted by start time.
+    const queue = midi.tracks
+      .flatMap((track) => track.notes)
+      .filter((note) => note.time + note.duration > position)
+      .sort((a, b) => a.time - b.time);
 
-    notes.forEach((note) => {
-      const noteEnd = note.time + note.duration;
+    let next = 0;
 
-      // Ignore notes that have already ended.
-      if (noteEnd <= position) return;
+    const scheduleAhead = () => {
+      const elapsed = position + (audioContext.currentTime - startTime);
 
-      // Start remaining notes at the appropriate playback time.
-      const noteStart = Math.max(note.time, position);
-      const delay = noteStart - position;
-      const remainingDuration = noteEnd - noteStart;
+      while (
+        next < queue.length &&
+        queue[next].time < elapsed + LOOKAHEAD_SECONDS
+      ) {
+        const note = queue[next++];
+        const noteEnd = note.time + note.duration;
+        const noteStart = Math.max(note.time, position);
 
-      const source = instrument.play(
-        note.name,
-        startTime + delay,
-        {
-          duration: remainingDuration,
-          gain: note.velocity,
-        }
-      );
+        const source = instrument.play(
+          note.name,
+          startTime + (noteStart - position),
+          {
+            duration: noteEnd - noteStart,
+            gain: note.velocity,
+          }
+        );
 
-      if (source) {
-        sourcesRef.current.push(source);
+        if (source) sourcesRef.current.push(source);
       }
-    });
+    };
 
+    scheduleAhead();
     setIsPlaying(true);
 
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+    if (timerRef.current) clearInterval(timerRef.current);
 
     timerRef.current = setInterval(() => {
       const elapsed =
-        positionRef.current +
-        (audioContext.currentTime - startedAtRef.current);
+        position + (audioContext.currentTime - startTime);
 
       if (elapsed >= duration) {
-        setCurrentTime(duration);
         positionRef.current = 0;
         stopPlayback();
         setCurrentTime(0);
         return;
       }
 
-      setCurrentTime(elapsed);
+      scheduleAhead();
+      setCurrentTime(Math.max(elapsed, position));
     }, 100);
   };
 

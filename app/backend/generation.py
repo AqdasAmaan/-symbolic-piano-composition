@@ -48,6 +48,7 @@ def generate_midi(
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
+            repetition_penalty=1.1,
             pad_token_id=model.config.eos_token_id,
         )
 
