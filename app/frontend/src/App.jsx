@@ -1,5 +1,4 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
@@ -13,6 +12,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [midiUrl, setMidiUrl] = useState(null);
   const [error, setError] = useState("");
+  const abortRef = useRef(null);
 
   const [modelStatus, setModelStatus] = useState({
     state: "checking",
@@ -72,20 +72,38 @@ function App() {
     };
   }, [midiUrl]);
 
+  // Abort any in-flight request when the app unmounts.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   const handleGenerate = async (settings) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setIsGenerating(true);
     setError("");
 
     try {
-      const midiBlob = await generateComposition(settings);
+      const midiBlob = await generateComposition(settings, {
+        signal: controller.signal,
+      });
       const newMidiUrl = URL.createObjectURL(midiBlob);
 
       setMidiUrl(newMidiUrl);
     } catch (err) {
-      setError(err.message || "Something went wrong.");
+      // A user cancel is not an error; keep the previous composition.
+      if (err.name !== "AbortError") {
+        setError(err.message || "Something went wrong.");
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setIsGenerating(false);
     }
+  };
+
+  const handleCancel = () => {
+    abortRef.current?.abort();
   };
 
   return (
@@ -108,7 +126,9 @@ function App() {
           <div className="workspace-grid">
             <Composer
               onGenerate={handleGenerate}
+              onCancel={handleCancel}
               isGenerating={isGenerating}
+              modelStatus={modelStatus}
             />
 
             <OutputPanel

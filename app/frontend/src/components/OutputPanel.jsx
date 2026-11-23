@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Midi } from "@tonejs/midi";
 import Soundfont from "soundfont-player";
@@ -22,6 +21,35 @@ function formatTime(seconds) {
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
+// Counts up while a composition is being generated.
+function ElapsedTimer() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+
+    const intervalId = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  return <p className="elapsed-time">{formatTime(seconds)} elapsed</p>;
+}
+
+// Keys that move a range input; other keys must not interrupt playback.
+const SEEK_KEYS = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
+
 export default function OutputPanel({
   midiUrl,
   error,
@@ -34,7 +62,10 @@ export default function OutputPanel({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState("");
+  const [isAudioReady, setIsAudioReady] = useState(false);
 
+  const audioReadyRef = useRef(null); // in-flight / completed soundfont load
+  const volumeRef = useRef(volume);
   const audioContextRef = useRef(null);
   const instrumentRef = useRef(null);
   const gainNodeRef = useRef(null);
@@ -116,6 +147,8 @@ export default function OutputPanel({
 
   // Update the master volume.
   useEffect(() => {
+    volumeRef.current = volume;
+
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.setTargetAtTime(
         volume,
@@ -135,48 +168,78 @@ export default function OutputPanel({
       }
 
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        audioContextRef.current.close().catch(() => {});
       }
+
+      audioContextRef.current = null;
+      gainNodeRef.current = null;
+      instrumentRef.current = null;
+      audioReadyRef.current = null;
     };
   }, [stopNotes]);
 
-  // Create the audio context and piano instrument on demand.
-  const initializeAudio = async () => {
-    if (instrumentRef.current) return;
+  // Create the audio context and load the piano soundfont.
+  // Idempotent: concurrent callers share the same in-flight promise.
+  const initializeAudio = useCallback(() => {
+    if (audioReadyRef.current) return audioReadyRef.current;
 
     const AudioContextClass =
       window.AudioContext || window.webkitAudioContext;
 
     if (!AudioContextClass) {
-      throw new Error("Your browser does not support audio playback.");
+      return Promise.reject(
+        new Error("Your browser does not support audio playback.")
+      );
     }
 
     const audioContext = new AudioContextClass();
     const gainNode = audioContext.createGain();
 
-    gainNode.gain.value = volume;
+    gainNode.gain.value = volumeRef.current;
     gainNode.connect(audioContext.destination);
 
     audioContextRef.current = audioContext;
     gainNodeRef.current = gainNode;
 
-    try {
-      const instrument = await Soundfont.instrument(
-        audioContext,
-        "acoustic_grand_piano",
-        { destination: gainNode }
-      );
+    const ready = Soundfont.instrument(
+      audioContext,
+      "acoustic_grand_piano",
+      { destination: gainNode }
+    )
+      .then((instrument) => {
+        // Ignore the result if the context was released meanwhile
+        // (unmount / StrictMode remount).
+        if (audioContextRef.current !== audioContext) return;
 
-      instrumentRef.current = instrument;
-    } catch (err) {
-      await audioContext.close();
+        instrumentRef.current = instrument;
+        setIsAudioReady(true);
+      })
+      .catch(() => {
+        // Only reset state we still own, so a later click can retry.
+        if (audioContextRef.current === audioContext) {
+          audioContext.close().catch(() => {});
 
-      audioContextRef.current = null;
-      gainNodeRef.current = null;
+          audioContextRef.current = null;
+          gainNodeRef.current = null;
+          audioReadyRef.current = null;
+        }
 
-      throw new Error("Unable to load the piano soundfont.");
-    }
-  };
+        throw new Error("Unable to load the piano soundfont.");
+      });
+
+    audioReadyRef.current = ready;
+
+    return ready;
+  }, []);
+
+  // Preload the piano as soon as the app opens, so the (multi-MB)
+  // soundfont download/decode overlaps with model generation instead
+  // of blocking the first Play click.
+  useEffect(() => {
+    initializeAudio().catch(() => {
+      // Surfaced on Play, where the user can retry.
+    });
+  }, [initializeAudio]);
 
   const LOOKAHEAD_SECONDS = 8;
 
@@ -265,6 +328,10 @@ export default function OutputPanel({
     setIsLoading(true);
     setPlaybackError("");
 
+    // Resume inside the click gesture (required by Safari/iOS) before
+    // awaiting anything. The context is created suspended by the preload.
+    audioContextRef.current?.resume?.();
+
     try {
       await initializeAudio();
 
@@ -303,6 +370,20 @@ export default function OutputPanel({
 
     positionRef.current = newPosition;
     setCurrentTime(newPosition);
+  };
+
+  // Only seeking keys pause/resume playback. Ignoring Tab/Shift/etc. and
+  // auto-repeat prevents playback from stopping and never resuming.
+  const handleSeekKeyDown = (event) => {
+    if (!SEEK_KEYS.has(event.key) || event.repeat) return;
+
+    handleSeekStart();
+  };
+
+  const handleSeekKeyUp = (event) => {
+    if (!SEEK_KEYS.has(event.key)) return;
+
+    handleSeekEnd();
   };
 
   const handleSeekEnd = () => {
@@ -349,6 +430,7 @@ export default function OutputPanel({
           <div className="loading-icon" />
           <h3>Composing your music</h3>
           <p>Your piano composition is being generated...</p>
+          <ElapsedTimer />
         </div>
       ) : error ? (
         <div className="output-empty">
@@ -384,8 +466,9 @@ export default function OutputPanel({
               value={Math.min(currentTime, duration)}
               onPointerDown={handleSeekStart}
               onPointerUp={handleSeekEnd}
-              onKeyDown={handleSeekStart}
-              onKeyUp={handleSeekEnd}
+              onPointerCancel={handleSeekEnd}
+              onKeyDown={handleSeekKeyDown}
+              onKeyUp={handleSeekKeyUp}
               onChange={handleSeek}
               aria-label="Seek through composition"
             />
@@ -410,7 +493,13 @@ export default function OutputPanel({
               className="main-play-button"
               onClick={handlePlayPause}
               disabled={isLoading || !midiData}
-              title={isPlaying ? "Pause" : "Play"}
+              title={
+                isPlaying
+                  ? "Pause"
+                  : isAudioReady
+                    ? "Play"
+                    : "Loading piano sounds..."
+              }
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isLoading ? (

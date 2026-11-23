@@ -1,23 +1,62 @@
-
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 if (!API_BASE_URL) {
   throw new Error("VITE_API_BASE_URL is not configured.");
 }
 
-export async function generateComposition(settings) {
-  const response = await fetch(`${API_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      max_new_tokens: settings.maxNewTokens,
-      temperature: settings.temperature,
-      top_k: 15,
-      top_p: 0.95,
-    }),
-  });
+// Long generations on CPU can be slow, so keep this generous.
+const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+
+function withTimeout(signal, ms) {
+  const timeout = AbortSignal.timeout(ms);
+
+  if (!signal) return timeout;
+
+  // AbortSignal.any is available in all current browsers; without it we
+  // still honour the caller's cancel signal, just without the timeout.
+  return AbortSignal.any ? AbortSignal.any([signal, timeout]) : signal;
+}
+
+function toFriendlyError(error) {
+  // User-initiated cancel: let the caller recognise and ignore it.
+  if (error?.name === "AbortError") return error;
+
+  if (error?.name === "TimeoutError") {
+    return new Error(
+      "Generation timed out. Try a shorter length and generate again."
+    );
+  }
+
+  // fetch() rejects with a TypeError when the server is unreachable.
+  if (error instanceof TypeError) {
+    return new Error(
+      "Cannot reach the backend. Make sure the server is running."
+    );
+  }
+
+  return error;
+}
+
+export async function generateComposition(settings, { signal } = {}) {
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        max_new_tokens: settings.maxNewTokens,
+        temperature: settings.temperature,
+        top_k: settings.topK ?? 15,
+        top_p: settings.topP ?? 0.95,
+      }),
+      signal: withTimeout(signal, GENERATION_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw toFriendlyError(error);
+  }
 
   if (!response.ok) {
     let message = "Music generation failed.";
@@ -32,7 +71,11 @@ export async function generateComposition(settings) {
     throw new Error(message);
   }
 
-  return response.blob();
+  try {
+    return await response.blob();
+  } catch (error) {
+    throw toFriendlyError(error);
+  }
 }
 
 

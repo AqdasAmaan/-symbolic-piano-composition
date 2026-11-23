@@ -1,10 +1,22 @@
-
 import { useState } from "react";
-import { SlidersHorizontal, Sparkles } from "lucide-react";
+import { SlidersHorizontal, Sparkles, X } from "lucide-react";
 
-export default function Composer({ onGenerate, isGenerating }) {
-  const [tokens, setTokens] = useState(2000);
+const UNAVAILABLE_MESSAGES = {
+  checking: "Checking the backend...",
+  not_ready: "The model isn't loaded yet. Please wait a moment.",
+  offline: "Can't reach the backend. Make sure the server is running.",
+};
+
+export default function Composer({
+  onGenerate,
+  onCancel,
+  isGenerating,
+  modelStatus = { state: "checking" },
+}) {
+  const [tokens, setTokens] = useState(512);
   const [temperature, setTemperature] = useState(1.5);
+
+  const isModelReady = modelStatus.state === "ready";
 
   const handleGenerate = () => {
     onGenerate({
@@ -81,16 +93,30 @@ export default function Composer({ onGenerate, isGenerating }) {
       <button
         className="generate-button"
         onClick={handleGenerate}
-        disabled={isGenerating}
+        disabled={isGenerating || !isModelReady}
       >
         <Sparkles size={17} />
         {isGenerating ? "Generating..." : "Generate composition"}
       </button>
 
+      {isGenerating && (
+        <button
+          type="button"
+          className="cancel-button"
+          onClick={onCancel}
+        >
+          <X size={16} />
+          Cancel
+        </button>
+      )}
+
       <p className="backend-note">
         {isGenerating
           ? "Your piano composition is being generated. Please wait..."
-          : "Ready to generate your composition."}
+          : isModelReady
+            ? "Ready to generate your composition."
+            : UNAVAILABLE_MESSAGES[modelStatus.state] ||
+              UNAVAILABLE_MESSAGES.checking}
       </p>
     </section>
   );
