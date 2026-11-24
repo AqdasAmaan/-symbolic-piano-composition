@@ -1,7 +1,6 @@
+import { CircleHelp } from "lucide-react";
 
-import { ChevronDown, CircleHelp } from "lucide-react";
-
-export default function Header() {
+export default function Header({ onHelp }) {
   return (
     <header className="header">
       <div className="breadcrumb">
@@ -9,15 +8,15 @@ export default function Header() {
       </div>
 
       <div className="header-actions">
-        <button className="icon-button" aria-label="Help">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Help"
+          title="Help"
+          onClick={onHelp}
+        >
           <CircleHelp size={18} />
         </button>
-
-        <div className="profile">
-          <div className="avatar">N</div>
-          <span>Composer</span>
-          <ChevronDown size={15} />
-        </div>
       </div>
     </header>
   );

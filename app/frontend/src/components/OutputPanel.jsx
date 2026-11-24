@@ -38,17 +38,18 @@ function ElapsedTimer() {
   return <p className="elapsed-time">{formatTime(seconds)} elapsed</p>;
 }
 
-// Keys that move a range input; other keys must not interrupt playback.
-const SEEK_KEYS = new Set([
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowUp",
-  "ArrowDown",
-  "Home",
-  "End",
-  "PageUp",
-  "PageDown",
-]);
+// Keyboard seeking.
+const SEEK_STEP_SECONDS = 5;
+const SEEK_PAGE_SECONDS = 15;
+
+const SEEK_KEY_DELTAS = {
+  ArrowLeft: -SEEK_STEP_SECONDS,
+  ArrowDown: -SEEK_STEP_SECONDS,
+  ArrowRight: SEEK_STEP_SECONDS,
+  ArrowUp: SEEK_STEP_SECONDS,
+  PageDown: -SEEK_PAGE_SECONDS,
+  PageUp: SEEK_PAGE_SECONDS,
+};
 
 export default function OutputPanel({
   midiUrl,
@@ -372,20 +373,6 @@ export default function OutputPanel({
     setCurrentTime(newPosition);
   };
 
-  // Only seeking keys pause/resume playback. Ignoring Tab/Shift/etc. and
-  // auto-repeat prevents playback from stopping and never resuming.
-  const handleSeekKeyDown = (event) => {
-    if (!SEEK_KEYS.has(event.key) || event.repeat) return;
-
-    handleSeekStart();
-  };
-
-  const handleSeekKeyUp = (event) => {
-    if (!SEEK_KEYS.has(event.key)) return;
-
-    handleSeekEnd();
-  };
-
   const handleSeekEnd = () => {
     if (seekWasPlayingRef.current) {
       seekWasPlayingRef.current = false;
@@ -401,6 +388,114 @@ export default function OutputPanel({
       playFromPosition(0);
     }
   };
+
+  // Current playback position in seconds, whether playing or paused.
+  const getPosition = () => {
+    if (isPlaying && audioContextRef.current) {
+      const elapsed =
+        positionRef.current +
+        (audioContextRef.current.currentTime - startedAtRef.current);
+
+      return Math.min(Math.max(elapsed, 0), duration);
+    }
+
+    return positionRef.current;
+  };
+
+  const seekTo = (position) => {
+    if (!midiRef.current) return;
+
+    const next = Math.min(Math.max(position, 0), duration);
+
+    positionRef.current = next;
+    setCurrentTime(next);
+
+    if (isPlaying) {
+      playFromPosition(next);
+    }
+  };
+
+  const seekBy = (delta) => {
+    seekTo(getPosition() + delta);
+  };
+
+  // Keyboard handling for the seek slider itself. Every key that would
+  // natively change the slider is handled here, so the audio can never
+  // get out of sync with the slider position.
+  const handleSeekSliderKeyDown = (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const delta = SEEK_KEY_DELTAS[event.key];
+
+    if (delta !== undefined) {
+      event.preventDefault();
+      seekBy(delta);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      seekTo(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      seekTo(duration);
+    } else if (event.key === " ") {
+      event.preventDefault();
+      handlePlayPause();
+    }
+  };
+
+  // Space on the volume slider toggles playback (arrows still adjust volume).
+  const handleVolumeKeyDown = (event) => {
+    if (event.key === " ") {
+      event.preventDefault();
+      handlePlayPause();
+    }
+  };
+
+  // Global shortcuts: Space = play/pause, Left/Right = skip.
+  // Keep the latest handlers in a ref so the listener is attached once.
+  const shortcutsRef = useRef({});
+
+  useEffect(() => {
+    shortcutsRef.current = { togglePlay: handlePlayPause, seekBy };
+  });
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const target = event.target;
+      const tag = target?.tagName;
+
+      // Leave text fields, sliders and dropdowns (e.g. the Composer's
+      // controls) alone so their own keys keep working.
+      const isFormControl =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable;
+
+      if (isFormControl) return;
+
+      if (event.key === " ") {
+        // Buttons and links already activate on Space natively.
+        if (tag === "BUTTON" || tag === "A") return;
+
+        event.preventDefault();
+        shortcutsRef.current.togglePlay?.();
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        shortcutsRef.current.seekBy?.(
+          event.key === "ArrowLeft"
+            ? -SEEK_STEP_SECONDS
+            : SEEK_STEP_SECONDS
+        );
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const handleDownload = () => {
     if (!midiUrl) return;
@@ -467,8 +562,7 @@ export default function OutputPanel({
               onPointerDown={handleSeekStart}
               onPointerUp={handleSeekEnd}
               onPointerCancel={handleSeekEnd}
-              onKeyDown={handleSeekKeyDown}
-              onKeyUp={handleSeekKeyUp}
+              onKeyDown={handleSeekSliderKeyDown}
               onChange={handleSeek}
               aria-label="Seek through composition"
             />
@@ -523,10 +617,15 @@ export default function OutputPanel({
                 onChange={(event) =>
                   setVolume(Number(event.target.value))
                 }
+                onKeyDown={handleVolumeKeyDown}
                 aria-label="Volume"
               />
             </div>
           </div>
+
+          <p className="shortcut-hint">
+            Space to play/pause · ← → to skip {SEEK_STEP_SECONDS}s
+          </p>
 
           {playbackError && (
             <p className="playback-error">{playbackError}</p>

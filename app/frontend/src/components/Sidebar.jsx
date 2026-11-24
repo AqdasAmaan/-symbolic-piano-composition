@@ -1,16 +1,14 @@
-
 import {
   Music2,
   Plus,
   Library,
   AudioLines,
-  Settings,
   CircleHelp,
 } from "lucide-react";
 
 const navigation = [
-  { label: "Composer", icon: AudioLines },
-  { label: "My compositions", icon: Library },
+  { label: "Composer", icon: AudioLines, active: true },
+  { label: "My compositions", icon: Library, comingSoon: true },
 ];
 
 const statusLabels = {
@@ -30,9 +28,17 @@ const statusLabels = {
     title: "Backend offline",
     description: "Cannot reach the API",
   },
+  misconfigured: {
+    title: "Not configured",
+    description: "Set VITE_API_BASE_URL",
+  },
 };
 
-export default function Sidebar({ modelStatus = { state: "checking" } }) {
+export default function Sidebar({
+  modelStatus = { state: "checking" },
+  onNewComposition,
+  onHelp,
+}) {
   const status = statusLabels[modelStatus.state] || statusLabels.checking;
 
   return (
@@ -44,7 +50,11 @@ export default function Sidebar({ modelStatus = { state: "checking" } }) {
         <span>NOCTURNE</span>
       </div>
 
-      <button className="new-composition">
+      <button
+        type="button"
+        className="new-composition"
+        onClick={onNewComposition}
+      >
         <Plus size={17} />
         New composition
       </button>
@@ -52,24 +62,23 @@ export default function Sidebar({ modelStatus = { state: "checking" } }) {
       <div className="nav-section">
         <span className="nav-heading">WORKSPACE</span>
 
-        {navigation.map(({ label, icon: Icon }) => (
+        {navigation.map(({ label, icon: Icon, active, comingSoon }) => (
           <button
             key={label}
-            className={`nav-item ${label === "Composer" ? "active" : ""}`}
+            type="button"
+            className={`nav-item ${active ? "active" : ""}`}
+            aria-current={active ? "page" : undefined}
+            disabled={comingSoon}
           >
             <Icon size={18} />
             <span>{label}</span>
+            {comingSoon && <span className="nav-badge">Soon</span>}
           </button>
         ))}
       </div>
 
       <div className="sidebar-bottom">
-        <button className="nav-item">
-          <Settings size={18} />
-          <span>Settings</span>
-        </button>
-
-        <button className="nav-item">
+        <button type="button" className="nav-item" onClick={onHelp}>
           <CircleHelp size={18} />
           <span>Help</span>
         </button>

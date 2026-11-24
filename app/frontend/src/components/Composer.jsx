@@ -5,6 +5,8 @@ const UNAVAILABLE_MESSAGES = {
   checking: "Checking the backend...",
   not_ready: "The model isn't loaded yet. Please wait a moment.",
   offline: "Can't reach the backend. Make sure the server is running.",
+  misconfigured:
+    "The API address isn't configured. Set VITE_API_BASE_URL in .env.",
 };
 
 export default function Composer({
@@ -15,6 +17,8 @@ export default function Composer({
 }) {
   const [tokens, setTokens] = useState(512);
   const [temperature, setTemperature] = useState(1.5);
+  const [topK, setTopK] = useState(15);
+  const [topP, setTopP] = useState(0.95);
 
   const isModelReady = modelStatus.state === "ready";
 
@@ -22,6 +26,8 @@ export default function Composer({
     onGenerate({
       maxNewTokens: tokens,
       temperature,
+      topK,
+      topP,
     });
   };
 
@@ -81,6 +87,56 @@ export default function Composer({
           <span>Experimental</span>
         </div>
       </div>
+
+      <details className="advanced-settings">
+        <summary>Advanced</summary>
+
+        <div className="setting-group">
+          <div className="setting-label">
+            <label htmlFor="top-k">Top-k</label>
+            <span>{topK}</span>
+          </div>
+
+          <input
+            id="top-k"
+            type="range"
+            min="1"
+            max="100"
+            step="1"
+            value={topK}
+            disabled={isGenerating}
+            onChange={(e) => setTopK(Number(e.target.value))}
+          />
+
+          <div className="range-labels">
+            <span>Focused</span>
+            <span>Varied</span>
+          </div>
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-label">
+            <label htmlFor="top-p">Top-p</label>
+            <span>{topP.toFixed(2)}</span>
+          </div>
+
+          <input
+            id="top-p"
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.01"
+            value={topP}
+            disabled={isGenerating}
+            onChange={(e) => setTopP(Number(e.target.value))}
+          />
+
+          <div className="range-labels">
+            <span>Focused</span>
+            <span>Varied</span>
+          </div>
+        </div>
+      </details>
 
       <div className="generation-note">
         <Sparkles size={17} />

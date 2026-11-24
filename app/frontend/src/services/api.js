@@ -1,8 +1,16 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Strip trailing slashes so "http://host:8000/" doesn't produce "//api/...".
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(
+  /\/+$/,
+  ""
+);
 
-if (!API_BASE_URL) {
-  throw new Error("VITE_API_BASE_URL is not configured.");
-}
+// Don't throw at import time: that blanks the whole page. The UI reads
+// this flag and explains the problem instead.
+export const isApiConfigured = Boolean(API_BASE_URL);
+
+const CONFIG_ERROR =
+  "The API address isn't configured. Set VITE_API_BASE_URL in " +
+  "frontend/.env and restart the dev server.";
 
 // Long generations on CPU can be slow, so keep this generous.
 const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -38,6 +46,8 @@ function toFriendlyError(error) {
 }
 
 export async function generateComposition(settings, { signal } = {}) {
+  if (!isApiConfigured) throw new Error(CONFIG_ERROR);
+
   let response;
 
   try {
@@ -80,6 +90,8 @@ export async function generateComposition(settings, { signal } = {}) {
 
 
 export async function checkModelHealth() {
+  if (!isApiConfigured) throw new Error(CONFIG_ERROR);
+
   const response = await fetch(`${API_BASE_URL}/api/health`, {
     method: "GET",
     cache: "no-store",

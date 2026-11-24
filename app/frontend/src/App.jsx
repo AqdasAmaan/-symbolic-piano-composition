@@ -4,7 +4,12 @@ import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import Composer from "./components/Composer";
 import OutputPanel from "./components/OutputPanel";
-import { generateComposition, checkModelHealth } from "./services/api";
+import HelpDialog from "./components/HelpDialog";
+import {
+  generateComposition,
+  checkModelHealth,
+  isApiConfigured,
+} from "./services/api";
 
 import "./App.css";
 
@@ -12,15 +17,18 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [midiUrl, setMidiUrl] = useState(null);
   const [error, setError] = useState("");
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const abortRef = useRef(null);
 
   const [modelStatus, setModelStatus] = useState({
-    state: "checking",
+    state: isApiConfigured ? "checking" : "misconfigured",
     device: null,
   });
 
   // Monitor backend and model readiness.
   useEffect(() => {
+    if (!isApiConfigured) return;
+
     let isMounted = true;
     let isChecking = false;
 
@@ -106,12 +114,33 @@ function App() {
     abortRef.current?.abort();
   };
 
+  // Clear the workspace for a fresh start.
+  const handleNewComposition = () => {
+    if (
+      midiUrl &&
+      !window.confirm(
+        "Start a new composition? The current one will be discarded " +
+          "(download it first if you want to keep it)."
+      )
+    ) {
+      return;
+    }
+
+    abortRef.current?.abort();
+    setMidiUrl(null);
+    setError("");
+  };
+
   return (
     <div className="app-layout">
-      <Sidebar modelStatus={modelStatus} />
+      <Sidebar
+        modelStatus={modelStatus}
+        onNewComposition={handleNewComposition}
+        onHelp={() => setIsHelpOpen(true)}
+      />
 
       <main className="main-area">
-        <Header />
+        <Header onHelp={() => setIsHelpOpen(true)} />
 
         <div className="workspace">
           <div className="welcome-section">
@@ -144,6 +173,11 @@ function App() {
           </footer>
         </div>
       </main>
+
+      <HelpDialog
+        open={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
+      />
     </div>
   );
 }
