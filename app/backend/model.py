@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 
@@ -8,10 +7,15 @@ from miditok import REMI
 from transformers import AutoModelForCausalLM
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-TOKENIZER_PATH = BASE_DIR / "configs" / "tokenizer.json"
-
 load_dotenv(Path(__file__).with_name(".env"))
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+# Defaults to <project root>/configs/tokenizer.json for local development;
+# set TOKENIZER_PATH to override (e.g. inside a container).
+TOKENIZER_PATH = Path(
+    os.getenv("TOKENIZER_PATH") or BASE_DIR / "configs" / "tokenizer.json"
+)
 
 
 def load_model():

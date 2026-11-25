@@ -1,0 +1,12 @@
+# Local environment (never commit)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Generated output
+outputs/
+*.mid

@@ -1,11 +1,41 @@
-
+import os
 from pathlib import Path
 
 import torch
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = BASE_DIR / "outputs" / "finetuned"
+
+# Where generated MIDI files are written. Set OUTPUT_DIR to override
+# (e.g. /tmp/outputs in a container).
+OUTPUT_DIR = Path(
+    os.getenv("OUTPUT_DIR") or BASE_DIR / "outputs" / "finetuned"
+)
+
+
+def warm_up(model, tokenizer, device, tokens=8):
+    """Run a tiny generation so the first real request is not slow.
+
+    Initialises CUDA kernels / cuBLAS handles, allocator pools and the
+    HF generation code path.
+    """
+    bos_token_id = tokenizer["BOS_None"]
+
+    input_ids = torch.tensor(
+        [[bos_token_id]],
+        dtype=torch.long,
+        device=device,
+    )
+
+    model.eval()
+
+    with torch.inference_mode():
+        model.generate(
+            input_ids=input_ids,
+            max_new_tokens=tokens,
+            do_sample=True,
+            pad_token_id=model.config.eos_token_id,
+        )
 
 
 def generate_midi(

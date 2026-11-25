@@ -1,16 +1,19 @@
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
+
 // Strip trailing slashes so "http://host:8000/" doesn't produce "//api/...".
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(
-  /\/+$/,
-  ""
-);
+// An empty value is valid and means "same origin": requests go to /api on
+// whatever host served the page (dev-server proxy, or the single-container
+// deployment). Only a completely missing variable is a configuration error.
+const API_BASE_URL = (rawBaseUrl ?? "").replace(/\/+$/, "");
 
 // Don't throw at import time: that blanks the whole page. The UI reads
 // this flag and explains the problem instead.
-export const isApiConfigured = Boolean(API_BASE_URL);
+export const isApiConfigured = rawBaseUrl !== undefined;
 
 const CONFIG_ERROR =
   "The API address isn't configured. Set VITE_API_BASE_URL in " +
-  "frontend/.env and restart the dev server.";
+  "frontend/.env (leave it empty to use the same address as the site) " +
+  "and restart the dev server.";
 
 // Long generations on CPU can be slow, so keep this generous.
 const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -69,7 +72,14 @@ export async function generateComposition(settings, { signal } = {}) {
   }
 
   if (!response.ok) {
-    let message = "Music generation failed.";
+    let message = `Music generation failed (HTTP ${response.status}).`;
+
+    // Proxies and tunnels give up on slow requests with these statuses.
+    if (response.status === 504 || response.status === 524) {
+      message =
+        "The connection timed out before the music was ready. " +
+        "Try a shorter length.";
+    }
 
     try {
       const error = await response.json();

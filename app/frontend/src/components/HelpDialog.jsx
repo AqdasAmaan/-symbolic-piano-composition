@@ -41,24 +41,28 @@ export default function HelpDialog({ open, onClose }) {
 
         <h3>Settings</h3>
         <dl>
-          <dt>Generation length</dt>
+          <dt>Length</dt>
           <dd>
-            How many tokens the model generates. More tokens make a longer
-            piece but take longer to generate.
+            Short, Medium, Long and Extended set how much music the model
+            writes: about 256, 512, 1024 and 2000 tokens. A token is one
+            small piece of musical information, such as a note, its length
+            or its position. Longer pieces take longer to generate.
           </dd>
 
-          <dt>Temperature</dt>
+          <dt>Creativity (temperature)</dt>
           <dd>
-            Low values stay predictable and conservative. High values take
-            more risks and sound more experimental.
+            How adventurous the music is. Calm stays predictable and
+            familiar. Balanced is a good middle. Adventurous and Wild take
+            bigger risks and can sound surprising or unusual.
           </dd>
 
-          <dt>Top-k and Top-p (Advanced)</dt>
+          <dt>Choice pool (top-k) and Probability cutoff (top-p)</dt>
           <dd>
-            Limit which notes the model may pick next. Top-k keeps only the
-            k most likely choices. Top-p keeps the smallest group of choices
-            whose combined probability reaches p. Lower values sound more
-            focused, higher values more varied.
+            Advanced controls that limit which notes the model may pick
+            next. Top-k keeps only the k most likely choices. Top-p keeps
+            the smallest group of choices whose combined probability
+            reaches p. Lower values sound more focused, higher values more
+            varied.
           </dd>
         </dl>
 
