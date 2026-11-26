@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Midi } from "@tonejs/midi";
 import Soundfont from "soundfont-player";
 import {
+  createMasterChain,
+  getVelocityScale,
+  noteGain,
+  volumeToGain,
+} from "../services/audioChain";
+import {
   Download,
   Music2,
   Pause,
@@ -59,7 +65,7 @@ export default function OutputPanel({
   const [midiData, setMidiData] = useState(null);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(0.7);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState("");
@@ -152,7 +158,7 @@ export default function OutputPanel({
 
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.setTargetAtTime(
-        volume,
+        volumeToGain(volume),
         audioContextRef.current.currentTime,
         0.02
       );
@@ -194,18 +200,17 @@ export default function OutputPanel({
     }
 
     const audioContext = new AudioContextClass();
-    const gainNode = audioContext.createGain();
 
-    gainNode.gain.value = volumeRef.current;
-    gainNode.connect(audioContext.destination);
+    // volume gain -> limiter -> soft clipper -> speakers
+    const chain = createMasterChain(audioContext, volumeRef.current);
 
     audioContextRef.current = audioContext;
-    gainNodeRef.current = gainNode;
+    gainNodeRef.current = chain.gainNode;
 
     const ready = Soundfont.instrument(
       audioContext,
       "acoustic_grand_piano",
-      { destination: gainNode }
+      { destination: chain.input }
     )
       .then((instrument) => {
         // Ignore the result if the context was released meanwhile
@@ -264,6 +269,13 @@ export default function OutputPanel({
       .filter((note) => note.time + note.duration > position)
       .sort((a, b) => a.time - b.time);
 
+    // Bring the piece's loudest note to full level (keeps the dynamics).
+    // Uses the WHOLE piece, not just the notes after `position`, so the
+    // level stays the same wherever playback starts or after seeking.
+    const velocityScale = getVelocityScale(
+      midi.tracks.flatMap((track) => track.notes)
+    );
+
     let next = 0;
 
     const scheduleAhead = () => {
@@ -282,7 +294,7 @@ export default function OutputPanel({
           startTime + (noteStart - position),
           {
             duration: noteEnd - noteStart,
-            gain: note.velocity,
+            gain: noteGain(note.velocity, velocityScale),
           }
         );
 
